@@ -70,40 +70,23 @@ fn cleanup_empty_docking_zones(
         };
 
         let mut despawn_zone = true;
-        let parent_id = parent.get();
+        let parent_id = parent.get();        
         if let Ok(_) = q_split_zones.get(parent_id) {
-            let children = q_children.get(parent_id).unwrap();
+            let mut zone_child_count: Vec<usize> = vec![];
+            if let Ok(children) = q_children.get(parent_id) {
+                for child in children {
+                    if *child == zone_ref.zone {
+                        continue;
+                    }
 
-            let mut remaining_zones = 0;
-            for child in children {
-                if *child == zone_ref.zone {
-                    continue;
-                }
-
-                if q_sized_zone.get(*child).is_ok() {
-                    remaining_zones += 1;
-                }
-            }
-
-            if remaining_zones == 1 {
-                let remaining = children
-                    .iter()
-                    .find(|child| **child != zone_ref.zone && q_sized_zone.get(**child).is_ok())
-                    .unwrap();
-
-                let mut need_to_keep_container = false;
-                if let Ok(children_of_remaining_zone) = q_children.get(*remaining) {
-                    if children_of_remaining_zone
-                        .iter()
+                    if q_sized_zone.get(*child).is_ok() {
+                        zone_child_count.push(children.iter()
                         .filter(|child| q_sized_zone.get(**child).is_ok())
-                        .count()
-                        > 0
-                    {
-                        need_to_keep_container = true;
+                        .count());
                     }
                 }
 
-                if !need_to_keep_container {
+                if !(zone_child_count.len() > 0 && zone_child_count[0] > 0) {
                     if let Ok(split_parent) = q_parent.get(parent_id) {
                         let split_parent_id = split_parent.get();
                         let index = q_children
@@ -124,7 +107,6 @@ fn cleanup_empty_docking_zones(
                                     .insert_children(index, &[*child]);
                             }
                         }
-
                         commands.entity(parent_id).despawn_recursive();
                     }
                     despawn_zone = false;
