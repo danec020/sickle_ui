@@ -46,7 +46,6 @@ impl Plugin for DockingZonePlugin {
 #[derive(SystemSet, Clone, Eq, Debug, Hash, PartialEq)]
 pub struct DockingZoneUpdate;
 
-// TODO: Fix lingering DockingZoneSplitContainer after their sole docking zone child's content is removed
 fn cleanup_empty_docking_zones(
     q_tab_containers: Query<(&TabContainer, &RemoveEmptyDockingZone), Changed<TabContainer>>,
     q_parent: Query<&Parent>,
@@ -87,43 +86,15 @@ fn cleanup_empty_docking_zones(
                         .count());
                     }
                 }
-                //If nothing is found then the docking_zone can be removed but this doesn't mean
+                //If nothing is found then the docking_zone can be removed. NOTE: This doesn't mean
                 //there aren't children inside that are of a different type than sized_zones.
                 if child_zones_count.len() == 0 {
-                    // if let Ok(tz_parents_parent) = q_parent.get(tab_zone_parent_id) {
-                        // let tz_parents_parent = tz_parents_parent.get();
-                        // //Find out what index the tab's parent is so we can remove it (Contains all Tab elements)
-                        // let removal_index = q_children
-                        //     .get(tz_parents_parent)
-                        //     .unwrap()
-                        //     .iter()
-                        //     .position(|child| *child == tab_zone_parent_id)
-                        //     .unwrap();
-
-                        //Now that we have the index that is going to be removed, move it's children up.
-                        //Earlier we only looked for children of sized_zones under this parent, not other types.
-                        // for child in tz_parent_children {
-                        //     //Ignore the tab_zone that is going to be removed, it is no longer needed.
-                        //     if *child == tab_zone.zone { continue; }
-
-                        //     //Put the children at the index this zone use to be in
-                        //     //*NOTE: q_sized_zones in this example has already be searched on line 84 and
-                        //     //we have determined child cound is 0, therefore this can never happen. But
-                        //     //this example may be useful if you were looking for something OTHER than a
-                        //     //zone to throw these children in? 
-                        //     if q_sized_zones.get(*child).is_ok() {
-                        //         commands
-                        //             .entity(tz_parents_parent)
-                        //             .insert_children(removal_index, &[*child]);
-                        //     }
-                        // }
-                    // }
-                commands.entity(tab_zone_parent_id).despawn_recursive();
-                despawn_zone = false;
+                    commands.entity(tab_zone_parent_id).despawn_recursive();
+                    despawn_zone = false;
                 }
             }
         }
-
+        //We didn't have to dispawn the parent of this tab, so despawn this zone and reset the parent.
         if despawn_zone {
             commands.entity(tab_zone.zone).despawn_recursive();
             commands.entity(tab_zone_parent_id).add(ResetChildrenInUiSurface);
