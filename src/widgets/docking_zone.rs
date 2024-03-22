@@ -51,72 +51,82 @@ fn cleanup_empty_docking_zones(
     q_tab_containers: Query<(&TabContainer, &RemoveEmptyDockingZone), Changed<TabContainer>>,
     q_parent: Query<&Parent>,
     q_children: Query<&Children>,
-    q_sized_zone: Query<(Entity, &SizedZone)>,
+    q_sized_zones: Query<(Entity, &SizedZone)>,
     q_split_zones: Query<&DockingZoneSplitContainer>,
     mut commands: Commands,
 ) {
-    for (tab_container, zone_ref) in &q_tab_containers {
+    for (tab_container, tab_zone) in &q_tab_containers {
         if tab_container.tab_count() > 0 {
             continue;
         }
 
-        let Ok(parent) = q_parent.get(zone_ref.zone) else {
+        let Ok(tab_zone_parent) = q_parent.get(tab_zone.zone) else {
             warn!(
                 "Invalid docking zone detected: Zone {:?} doesn't have a Parent!",
-                zone_ref.zone
+                tab_zone.zone
             );
-            commands.entity(zone_ref.zone).despawn_recursive();
+            commands.entity(tab_zone.zone).despawn_recursive();
             continue;
         };
 
         let mut despawn_zone = true;
-        let parent_id = parent.get();        
-        if let Ok(_) = q_split_zones.get(parent_id) {
-            let mut zone_child_count: Vec<usize> = vec![];
-            if let Ok(children) = q_children.get(parent_id) {
-                for child in children {
-                    if *child == zone_ref.zone {
-                        continue;
-                    }
-
-                    if q_sized_zone.get(*child).is_ok() {
-                        zone_child_count.push(children.iter()
-                        .filter(|child| q_sized_zone.get(**child).is_ok())
+        let tab_zone_parent_id = tab_zone_parent.get();
+        if let Ok(_) = q_split_zones.get(tab_zone_parent_id) {
+            //How many zones are in the docking zone this tab is a member of and the amount of children they contain.
+            //By keeping count of the children in a vector we also know how many zones are availble as well.
+            let mut child_zones_count: Vec<usize> = vec![];
+            if let Ok(tz_parent_children) = q_children.get(tab_zone_parent_id) {
+                for child in tz_parent_children {
+                    //Ignore the zone we wish to remove, it is empty
+                    if *child == tab_zone.zone { continue; }
+                    //Check if this child is a zone that may need to be later propagated
+                    //upwards if this zone is removed. Store how many children it has.
+                    if q_sized_zones.get(*child).is_ok() {
+                        child_zones_count.push(tz_parent_children.iter()
+                        .filter(|child| q_sized_zones.get(**child).is_ok())
                         .count());
                     }
                 }
+                //If nothing is found then the docking_zone can be removed but this doesn't mean
+                //there aren't children inside that are of a different type than sized_zones.
+                if child_zones_count.len() == 0 {
+                    // if let Ok(tz_parents_parent) = q_parent.get(tab_zone_parent_id) {
+                        // let tz_parents_parent = tz_parents_parent.get();
+                        // //Find out what index the tab's parent is so we can remove it (Contains all Tab elements)
+                        // let removal_index = q_children
+                        //     .get(tz_parents_parent)
+                        //     .unwrap()
+                        //     .iter()
+                        //     .position(|child| *child == tab_zone_parent_id)
+                        //     .unwrap();
 
-                if !(zone_child_count.len() > 0 && zone_child_count[0] > 0) {
-                    if let Ok(split_parent) = q_parent.get(parent_id) {
-                        let split_parent_id = split_parent.get();
-                        let index = q_children
-                            .get(split_parent_id)
-                            .unwrap()
-                            .iter()
-                            .position(|child| *child == parent_id)
-                            .unwrap();
+                        //Now that we have the index that is going to be removed, move it's children up.
+                        //Earlier we only looked for children of sized_zones under this parent, not other types.
+                        // for child in tz_parent_children {
+                        //     //Ignore the tab_zone that is going to be removed, it is no longer needed.
+                        //     if *child == tab_zone.zone { continue; }
 
-                        for child in children {
-                            if *child == zone_ref.zone {
-                                continue;
-                            }
-
-                            if q_sized_zone.get(*child).is_ok() {
-                                commands
-                                    .entity(split_parent_id)
-                                    .insert_children(index, &[*child]);
-                            }
-                        }
-                        commands.entity(parent_id).despawn_recursive();
-                    }
-                    despawn_zone = false;
+                        //     //Put the children at the index this zone use to be in
+                        //     //*NOTE: q_sized_zones in this example has already be searched on line 84 and
+                        //     //we have determined child cound is 0, therefore this can never happen. But
+                        //     //this example may be useful if you were looking for something OTHER than a
+                        //     //zone to throw these children in? 
+                        //     if q_sized_zones.get(*child).is_ok() {
+                        //         commands
+                        //             .entity(tz_parents_parent)
+                        //             .insert_children(removal_index, &[*child]);
+                        //     }
+                        // }
+                    // }
+                commands.entity(tab_zone_parent_id).despawn_recursive();
+                despawn_zone = false;
                 }
             }
         }
 
         if despawn_zone {
-            commands.entity(zone_ref.zone).despawn_recursive();
-            commands.entity(parent_id).add(ResetChildrenInUiSurface);
+            commands.entity(tab_zone.zone).despawn_recursive();
+            commands.entity(tab_zone_parent_id).add(ResetChildrenInUiSurface);
         }
     }
 }
