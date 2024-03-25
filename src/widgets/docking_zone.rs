@@ -52,8 +52,10 @@ fn cleanup_empty_docking_zones(
     q_children: Query<&Children>,
     q_sized_zones: Query<(Entity, &SizedZone)>,
     q_split_zones: Query<&DockingZoneSplitContainer>,
+    q_resize_handlers: Query<&SizedZoneResizeHandleContainer>,
     mut commands: Commands,
 ) {
+
     for (tab_container, tab_zone) in &q_tab_containers {
         if tab_container.tab_count() > 0 {
             continue;
@@ -71,30 +73,68 @@ fn cleanup_empty_docking_zones(
         let mut despawn_zone = true;
         let tab_zone_parent_id = tab_zone_parent.get();
         if let Ok(_) = q_split_zones.get(tab_zone_parent_id) {
-            //How many zones are in the docking zone this tab is a member of and the amount of children they contain.
-            //By keeping count of the children in a vector we also know how many zones are availble as well.
-            let mut child_zones_count: Vec<usize> = vec![];
+            //Store the children that may need to be shifted if this becomes a nested split zone.
+            //Set a bool to let the system know that the child is of type split zone as well.
+            let mut children_to_shift: Vec<Entity> = vec![];
+            let mut remaining_zones: u32 = 0;
+            let mut remaining_has_split: bool = false;
             if let Ok(tz_parent_children) = q_children.get(tab_zone_parent_id) {
                 for child in tz_parent_children {
-                    //Ignore the zone we wish to remove, it is empty
+                    //Ignore the zone we wish to remove.
                     if *child == tab_zone.zone { continue; }
-                    //Check if this child is a zone that may need to be later propagated
-                    //upwards if this zone is removed. Store how many children it has.
+
+                    //Skip if it is a resize handler, these aren't user created UI Widgets.
+                    if q_resize_handlers.get(*child).is_ok() { continue; }
+
+                    //Store this child incase we need to shift him after removing a zone.
+                    children_to_shift.push(*child);
+
+                    //Check if this child is a sized_zone that may need to be later propagated
+                    //upwards if the requested zone is removed or repositioned.
+                    //NOTE: A SplitZone is always paired with a SizedZone
                     if q_sized_zones.get(*child).is_ok() {
-                        child_zones_count.push(tz_parent_children.iter()
-                        .filter(|child| q_sized_zones.get(**child).is_ok())
-                        .count());
+                        remaining_zones += 1;
+
+                        //Check to see if the child is a split_zone to handle edge case for nested split_zones
+                        if !remaining_has_split
+                        {
+                            remaining_has_split = q_split_zones.get(*child).is_ok();
+                        }
                     }
                 }
-                //If nothing is found then the docking_zone can be removed. NOTE: This doesn't mean
-                //there aren't children inside that are of a different type than sized_zones.
-                if child_zones_count.len() == 0 {
+                //If nothing is found then the tab_zone's parent can be removed.
+                if (remaining_zones == 0) || (remaining_zones == 1 && remaining_has_split)
+                {
+                    //If has a single child but is a split_zone, handle shifting to avoid an empty
+                    //split zone with a child of type split zone.
+                    if remaining_has_split
+                    {
+                        //Get the requested zone's parent's parent since we need to shift up.
+                        if let Ok(tz_parent_parent) = q_parent.get(tab_zone_parent_id)
+                        {
+                            //Find out what index the tab's split parent is so we can remove it and replace
+                            //it with its single child split zone.
+                            let removal_index = q_children
+                                .get(tz_parent_parent.get())
+                                .unwrap()
+                                .iter()
+                                .position(|child| *child == tab_zone_parent_id)
+                                .unwrap();
+
+                            //Insert the split_zone into the parents index before removing the parent.
+                            //All children will come along with the move, including other UI Elements.
+                            commands
+                            .entity(tz_parent_parent.get())
+                            .insert_children(removal_index, &children_to_shift);
+                        }
+                    }
+                    //Everything important has been shifted or accounted for, can now be despawned.
                     commands.entity(tab_zone_parent_id).despawn_recursive();
                     despawn_zone = false;
                 }
             }
         }
-        //We didn't have to dispawn the parent of this tab, so despawn this zone and reset the parent.
+        //Despawn the requested zone and tell it's parent to handle resetting the other UI children.
         if despawn_zone {
             commands.entity(tab_zone.zone).despawn_recursive();
             commands.entity(tab_zone_parent_id).add(ResetChildrenInUiSurface);
