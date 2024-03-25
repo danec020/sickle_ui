@@ -50,12 +50,11 @@ fn cleanup_empty_docking_zones(
     q_tab_containers: Query<(&TabContainer, &RemoveEmptyDockingZone), Changed<TabContainer>>,
     q_parent: Query<&Parent>,
     q_children: Query<&Children>,
-    q_sized_zones: Query<(Entity, &SizedZone)>,
-    q_split_zones: Query<&DockingZoneSplitContainer>,
-    q_resize_handlers: Query<&SizedZoneResizeHandleContainer>,
+    q_sized_zone: Query<(Entity, &SizedZone)>,
+    q_split_zone: Query<&DockingZoneSplitContainer>,
+    q_resize_handler: Query<&SizedZoneResizeHandleContainer>,
     mut commands: Commands,
 ) {
-
     for (tab_container, tab_zone) in &q_tab_containers {
         if tab_container.tab_count() > 0 {
             continue;
@@ -72,7 +71,7 @@ fn cleanup_empty_docking_zones(
 
         let mut despawn_zone = true;
         let tab_zone_parent_id = tab_zone_parent.get();
-        if let Ok(_) = q_split_zones.get(tab_zone_parent_id) {
+        if let Ok(_) = q_split_zone.get(tab_zone_parent_id) {
             //Store the children that may need to be shifted if this becomes a nested split zone.
             //Set a bool to let the system know that the child is of type split zone as well.
             let mut children_to_shift: Vec<Entity> = vec![];
@@ -84,7 +83,7 @@ fn cleanup_empty_docking_zones(
                     if *child == tab_zone.zone { continue; }
 
                     //Skip if it is a resize handler, these aren't user created UI Widgets.
-                    if q_resize_handlers.get(*child).is_ok() { continue; }
+                    if q_resize_handler.get(*child).is_ok() { continue; }
 
                     //Store this child incase we need to shift him after removing a zone.
                     children_to_shift.push(*child);
@@ -92,14 +91,9 @@ fn cleanup_empty_docking_zones(
                     //Check if this child is a sized_zone that may need to be later propagated
                     //upwards if the requested zone is removed or repositioned.
                     //NOTE: A SplitZone is always paired with a SizedZone
-                    if q_sized_zones.get(*child).is_ok() {
+                    if q_sized_zone.get(*child).is_ok() {
                         remaining_zones += 1;
-
-                        //Check to see if the child is a split_zone to handle edge case for nested split_zones
-                        if !remaining_has_split
-                        {
-                            remaining_has_split = q_split_zones.get(*child).is_ok();
-                        }
+                        remaining_has_split = q_split_zone.get(*child).is_ok();
                     }
                 }
                 //If nothing is found then the tab_zone's parent can be removed.
