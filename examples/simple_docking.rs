@@ -9,7 +9,7 @@ use sickle_ui::{
     ui_builder::{UiBuilderExt, UiContextRoot, UiRoot},
     ui_commands::{LogHierarchyExt, SetCursorExt},
     ui_style::{SetBackgroundColorExt, SetNodeHeightExt, SetNodeWidthExt},
-    widgets::{prelude::*, tab_container::UiTabContainerSubExt, WidgetLibraryUpdate},
+    widgets::{prelude::*, WidgetLibraryUpdate},
     SickleUiPlugin,
 };
 
